@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>칼로리 기록</title>
+<style>
+  :root{
+    --bg:#fff; --fg:#000; --mute:#8e8e93; --line:#e5e5ea;
+    --me:#007aff; --them:#e9e9eb; --bar:#f2f2f7;
+    --warn:#ff3b30; --safe-b:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:16px/1.45 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex; justify-content:center;
+  }
+  .app{width:100%; max-width:440px; height:100%; display:flex; flex-direction:column;
+       border-left:1px solid var(--line); border-right:1px solid var(--line)}
+
+  /* ── 헤더 ── */
+  header{flex:none; padding:12px 16px 10px; border-bottom:1px solid var(--line);
+         background:rgba(255,255,255,.88); backdrop-filter:saturate(180%) blur(16px)}
+  .htop{display:flex; align-items:baseline; justify-content:space-between; gap:8px}
+  .hnum{font-size:15px; font-weight:600; letter-spacing:-.01em; font-variant-numeric:tabular-nums}
+  .hnum em{font-style:normal; font-weight:400; color:var(--mute); font-size:13px}
+  .hrem{font-size:12px; color:var(--mute); font-variant-numeric:tabular-nums}
+  .hrem.over{color:var(--warn)}
+  .track{height:3px; background:var(--bar); border-radius:2px; overflow:hidden; margin-top:8px}
+  .track i{display:block; height:100%; background:var(--me); border-radius:2px; transition:width .3s}
+  .track i.over{background:var(--warn)}
+  .macs{display:flex; gap:14px; margin-top:8px}
+  .mac{font-size:11px; color:var(--mute); font-variant-numeric:tabular-nums}
+  .mac b{font-weight:500; color:#3a3a3c}
+  .hacts{display:flex; gap:14px; margin-top:9px}
+  .hacts button{background:none; border:none; font:inherit; font-size:12px;
+                color:var(--me); cursor:pointer; padding:0}
+  .hacts button:disabled{color:#c7c7cc; cursor:default}
+
+  /* ── 대화 ── */
+  .chat{flex:1; overflow-y:auto; padding:18px 14px 8px; display:flex; flex-direction:column; gap:3px}
+  .day{align-self:center; font-size:11px; color:var(--mute); margin-bottom:14px}
+  .b{max-width:78%; padding:8px 13px; border-radius:19px; font-size:15px;
+     line-height:1.38; word-break:break-word; position:relative; animation:pop .18s ease-out}
+  @keyframes pop{from{opacity:0; transform:translateY(6px) scale(.97)}}
+  .them{align-self:flex-start; background:var(--them); border-bottom-left-radius:5px}
+  .me{align-self:flex-end; background:var(--me); color:#fff; border-bottom-right-radius:5px}
+  .b + .b{margin-top:2px}
+  .them + .me, .me + .them{margin-top:10px}
+  .b.pic{padding:3px; background:none; max-width:56%}
+  .b.pic img{display:block; width:100%; border-radius:16px}
+  .b.pic.me{border-bottom-right-radius:16px}
+  .sub{display:block; font-size:12px; opacity:.72; margin-top:2px; font-variant-numeric:tabular-nums}
+  .x{position:absolute; top:-5px; left:-7px; width:19px; height:19px; border-radius:50%;
+     border:none; background:#c7c7cc; color:#fff; font-size:12px; line-height:19px;
+     cursor:pointer; opacity:0; transition:opacity .15s; padding:0}
+  .b.me:hover .x{opacity:1}
+  .x:hover{background:var(--warn)}
+  @media (hover:none){ .x{opacity:.55} }
+
+  /* ── 입력 ── */
+  .bar{flex:none; border-top:1px solid var(--line); padding:11px 14px calc(11px + var(--safe-b));
+       background:rgba(255,255,255,.94); backdrop-filter:saturate(180%) blur(16px)}
+  .prime{width:100%; height:46px; border:none; border-radius:23px; background:var(--me);
+         color:#fff; font:inherit; font-weight:500; cursor:pointer;
+         display:flex; align-items:center; justify-content:center; gap:8px}
+  .prime:active{opacity:.82}
+  .prime:disabled{background:#c7c7cc; cursor:default}
+  .link{display:block; width:100%; margin-top:11px; background:none; border:none;
+        font:inherit; font-size:13px; color:var(--me); cursor:pointer; text-align:center}
+
+  .search{position:relative}
+  .search input{width:100%; height:42px; border:1px solid var(--line); border-radius:21px;
+                padding:0 16px; font:inherit; font-size:15px; outline:none; background:var(--bar)}
+  .search input:focus{background:#fff; border-color:#c7c7cc}
+  .search input::placeholder{color:#b0b0b5}
+  .sugg{position:absolute; bottom:50px; left:0; right:0; z-index:30; background:#fff;
+        border:1px solid var(--line); border-radius:14px; overflow:hidden;
+        box-shadow:0 -6px 24px rgba(0,0,0,.09); max-height:212px; overflow-y:auto; display:none}
+  .sugg.on{display:block}
+  .sugg div{padding:10px 15px; cursor:pointer; display:flex; justify-content:space-between;
+            gap:10px; align-items:center}
+  .sugg div + div{border-top:1px solid #f2f2f5}
+  .sugg div.sel,.sugg div:hover{background:var(--bar)}
+  .sugg .nm{font-size:15px}
+  .sugg .kc{font-size:12px; color:var(--mute); white-space:nowrap}
+
+  /* 확정 단계 */
+  .confirm{display:flex; flex-direction:column; gap:11px}
+  .crow{display:flex; align-items:center; gap:10px}
+  .cname{flex:1; font-size:15px; font-weight:500; overflow:hidden;
+         text-overflow:ellipsis; white-space:nowrap}
+  .chips{display:flex; gap:6px}
+  .chip{border:1px solid var(--line); background:#fff; border-radius:15px; height:30px;
+        padding:0 13px; font:inherit; font-size:13px; color:var(--mute); cursor:pointer}
+  .chip.on{background:var(--me); border-color:var(--me); color:#fff}
+  .step{display:flex; align-items:center; gap:2px; background:var(--bar);
+        border-radius:16px; padding:2px}
+  .step button{width:30px; height:28px; border:none; background:none; font:inherit;
+               font-size:17px; color:var(--me); cursor:pointer; border-radius:14px; line-height:1}
+  .step button:active{background:#e0e0e5}
+  .step button:disabled{color:#c7c7cc}
+  .step span{min-width:44px; text-align:center; font-size:14px; font-variant-numeric:tabular-nums}
+  .ghost{background:none; border:none; font:inherit; font-size:13px; color:var(--mute);
+         cursor:pointer; padding:0}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="htop">
+      <div class="hnum"><span id="sk">0</span> <em>/ 1,980 kcal</em></div>
+      <div class="hrem" id="rem">1,980 남음</div>
+    </div>
+    <div class="track"><i id="tk" style="width:0"></i></div>
+    <div class="macs">
+      <div class="mac">탄 <b id="mC">0</b>/248</div>
+      <div class="mac">단 <b id="mP">0</b>/99</div>
+      <div class="mac">지 <b id="mF">0</b>/66</div>
+    </div>
+    <div class="hacts">
+      <button id="csv" disabled>CSV 내려받기</button>
+      <button id="clr" disabled>오늘 기록 지우기</button>
+    </div>
+  </header>
+
+  <div class="chat" id="chat"></div>
+
+  <div class="bar" id="bar"></div>
+  <input type="file" id="file" accept="image/*" hidden>
+
+</div>
+
+<script>
+const TARGET = {kcal:1980, carb:248, protein:99, fat:66};
+
+const FOODS = [
+["밥","1공기",210,300,66,5,1],["현미밥","1공기",210,310,64,6,3],["잡곡밥","1공기",210,305,64,7,2],
+["김밥","1줄",230,470,72,13,12],["비빔밥","1대접",450,600,90,18,16],["볶음밥","1접시",350,600,85,15,20],
+["김치볶음밥","1접시",350,620,84,16,23],["된장찌개","1대접",300,150,12,12,6],["김치찌개","1대접",300,240,10,16,14],
+["순두부찌개","1대접",350,280,12,18,17],["미역국","1대접",300,90,6,7,4],["설렁탕","1대접",400,350,8,35,20],
+["칼국수","1대접",600,550,90,20,10],["라면","1봉",120,500,73,10,17],["짜장면","1그릇",650,700,110,20,20],
+["짬뽕","1그릇",700,660,95,28,18],["냉면","1그릇",600,550,100,18,7],["파스타(오일)","1접시",350,600,80,16,24],
+["삼겹살","1인분",150,500,0,26,44],["목살","1인분",150,340,0,30,24],["소불고기","1인분",150,330,10,25,20],
+["닭가슴살","1조각",100,110,0,23,2],["닭다리(구이)","1개",120,220,0,20,15],["치킨(후라이드)","1조각",80,250,10,15,17],
+["계란(삶은)","1개",50,75,0,6,5],["계란후라이","1개",55,110,0,6,9],["두부","1/2모",150,120,3,13,7],
+["고등어구이","1토막",100,220,0,20,15],["연어(구이)","1토막",100,200,0,22,12],["김치","1접시",40,10,2,1,0],
+["시금치나물","1접시",60,40,3,3,2],["콩나물무침","1접시",60,35,3,3,2],["멸치볶음","1접시",20,60,4,6,2],
+["어묵볶음","1접시",70,110,10,6,5],["샐러드(드레싱X)","1접시",150,40,7,2,0],["샐러드(드레싱O)","1접시",180,180,10,3,14],
+["아메리카노","1잔",355,10,2,0,0],["카페라떼","1잔",355,180,15,10,9],["오렌지주스","1잔",250,110,26,1,0],
+["맥주","1캔",500,200,16,2,0],["소주","1병",360,400,0,0,0],["사과","1개",200,105,28,1,0],
+["바나나","1개",120,105,27,1,0],["아몬드","1줌",25,145,5,5,13],["식빵","1장",35,90,17,3,1],
+["크루아상","1개",60,240,26,5,12]
+].map(f=>({name:f[0],label:f[1],g:f[2],kcal:f[3],carb:f[4],protein:f[5],fat:f[6]}));
+
+const MEALS = ["아침","점심","저녁","간식"];
+
+/* 시간대별 기본 끼니 — 아침 ~10시 / 점심 11~15시 / 저녁 17~19시 / 그 외 간식 */
+function defaultMeal(d = new Date()){
+  const h = d.getHours();
+  if(h < 10) return "아침";
+  if(h >= 11 && h < 15) return "점심";
+  if(h >= 17 && h < 20) return "저녁";
+  return "간식";
+}
+
+const TODAY = new Date().toLocaleDateString('sv-SE');
+const KEY = 'ct-' + TODAY;
+let mem = [];
+const store = {
+  get(){ try{ return JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ return mem; } },
+  set(v){ mem = v; try{ localStorage.setItem(KEY, JSON.stringify(v)); }catch(e){} }
+};
+
+const $ = id => document.getElementById(id);
+const n = v => Math.round(v).toLocaleString('ko-KR');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let items = store.get();
+let mode = 'idle';        // idle | text | confirm
+let picked = null, qty = 1, meal = defaultMeal(), pendingPhoto = null, cursor = -1;
+
+/* ── 헤더 ── */
+function renderHead(){
+  const t = items.reduce((a,i)=>({
+    kcal:a.kcal+i.kcal, carb:a.carb+i.carb, protein:a.protein+i.protein, fat:a.fat+i.fat
+  }), {kcal:0,carb:0,protein:0,fat:0});
+
+  $('sk').textContent = n(t.kcal);
+  const d = TARGET.kcal - t.kcal;
+  const rem = $('rem');
+  rem.textContent = d >= 0 ? `${n(d)} 남음` : `${n(-d)} 초과`;
+  rem.classList.toggle('over', d < 0);
+
+  const p = t.kcal / TARGET.kcal * 100;
+  $('tk').style.width = Math.min(p,100) + '%';
+  $('tk').classList.toggle('over', p > 110);
+
+  $('mC').textContent = n(t.carb);
+  $('mP').textContent = n(t.protein);
+  $('mF').textContent = n(t.fat);
+
+  $('csv').disabled = $('clr').disabled = !items.length;
+}
+
+/* ── 대화 ── */
+function bubble(side, html, cls=''){
+  const el = document.createElement('div');
+  el.className = `b ${side} ${cls}`;
+  el.innerHTML = html;
+  $('chat').appendChild(el);
+  return el;
+}
+
+function renderChat(){
+  const c = $('chat');
+  c.innerHTML = `<div class="day">${new Date().toLocaleDateString('ko-KR',
+    {month:'long', day:'numeric', weekday:'long'})}</div>`;
+
+  bubble('them', items.length
+    ? '오늘 기록을 이어서 볼게요.'
+    : '오늘 드신 음식 사진을 올려주세요.');
+
+  let run = 0;
+  items.forEach((i, x) => {
+    if(i.photo) bubble('me', `<img src="${i.photo}" alt="">`, 'pic');
+    bubble('me',
+      `${esc(i.meal)} · ${esc(i.name)}<span class="sub">${n(i.g)}g</span>` +
+      `<button class="x" data-x="${x}" title="삭제">×</button>`);
+    run += i.kcal;
+    const d = TARGET.kcal - run;
+    bubble('them',
+      `${n(i.kcal)} kcal<span class="sub">누적 ${n(run)} · ` +
+      `${d >= 0 ? `${n(d)} 남음` : `${n(-d)} 초과`}</span>`);
+  });
+
+  if(pendingPhoto){
+    bubble('me', `<img src="${pendingPhoto}" alt="">`, 'pic');
+    bubble('them', '사진 속 음식을 골라주세요.');
+  }
+
+  if(items.length) bubble('them', advice());
+
+  c.querySelectorAll('.x').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    items.splice(+b.dataset.x, 1);
+    store.set(items); renderAll();
+  });
+  c.scrollTop = c.scrollHeight;
+}
+
+function advice(){
+  const t = items.reduce((a,i)=>({
+    kcal:a.kcal+i.kcal, carb:a.carb+i.carb, protein:a.protein+i.protein, fat:a.fat+i.fat
+  }), {kcal:0,carb:0,protein:0,fat:0});
+  const lack = [];
+  if(t.protein / TARGET.protein < 0.6) lack.push('단백질');
+  if(t.carb / TARGET.carb < 0.5) lack.push('탄수화물');
+  const over = t.fat / TARGET.fat > 1.1 ? '지방' : null;
+
+  if(over) return `지방이 목표를 넘었어요. 남은 끼니는 기름기를 줄여보세요.`;
+  if(lack.length) return `${lack.join('·')}이 아직 부족해요.`;
+  if(t.kcal / TARGET.kcal > 1.1) return '오늘 목표를 넘었어요.';
+  return '균형은 괜찮아요.';
+}
+
+/* ── 입력 바 ── */
+function renderBar(){
+  const bar = $('bar');
+
+  if(mode === 'idle'){
+    bar.innerHTML =
+      `<button class="prime" id="pic">사진 올리기</button>
+       <button class="link" id="toText">텍스트로 입력하시겠습니까?</button>`;
+    $('pic').onclick = () => $('file').click();
+    $('toText').onclick = () => { mode = 'text'; renderBar(); };
+    return;
+  }
+
+  if(mode === 'text'){
+    bar.innerHTML =
+      `<div class="search">
+         <div class="sugg" id="sugg"></div>
+         <input id="q" placeholder="음식 검색" autocomplete="off">
+       </div>
+       <button class="link" id="back">${pendingPhoto ? '사진 취소' : '사진으로 입력하기'}</button>`;
+    $('q').focus();
+    $('q').oninput = showSugg;
+    $('q').onkeydown = navSugg;
+    $('back').onclick = () => { pendingPhoto = null; mode = 'idle'; renderAll(); };
+    return;
+  }
+
+  /* confirm */
+  bar.innerHTML =
+    `<div class="confirm">
+       <div class="crow">
+         <div class="cname">${esc(picked.name)}</div>
+         <div class="step">
+           <button id="mn">−</button><span id="qv">${qty} ${esc(picked.label)}</span><button id="pl">+</button>
+         </div>
+       </div>
+       <div class="crow">
+         <div class="chips">${MEALS.map(m =>
+           `<button class="chip${m === meal ? ' on' : ''}" data-m="${m}">${m}</button>`).join('')}</div>
+       </div>
+       <button class="prime" id="save">${n(picked.kcal * qty)} kcal 기록</button>
+       <button class="ghost" id="cancel">취소</button>
+     </div>`;
+
+  const upd = () => {
+    $('qv').textContent = `${qty} ${picked.label}`;
+    $('mn').disabled = qty <= 0.5;
+    $('save').textContent = `${n(picked.kcal * qty)} kcal 기록`;
+  };
+  upd();
+  $('mn').onclick = () => { qty = Math.max(0.5, +(qty - 0.5).toFixed(1)); upd(); };
+  $('pl').onclick = () => { qty = +(qty + 0.5).toFixed(1); upd(); };
+  bar.querySelectorAll('.chip').forEach(b => b.onclick = () => {
+    meal = b.dataset.m; renderBar();
+  });
+  $('save').onclick = save;
+  $('cancel').onclick = () => { picked = null; mode = pendingPhoto ? 'text' : 'idle'; renderBar(); };
+}
+
+/* ── 자동완성 ── */
+function showSugg(){
+  const q = $('q').value.trim();
+  const box = $('sugg');
+  const hits = q ? FOODS.filter(f => f.name.includes(q)).slice(0, 6) : [];
+  cursor = -1;
+  if(!hits.length){ box.classList.remove('on'); return; }
+  box.innerHTML = hits.map((f, i) =>
+    `<div data-i="${i}"><span class="nm">${f.name}</span>
+     <span class="kc">${f.label} · ${f.kcal}kcal</span></div>`).join('');
+  box.classList.add('on');
+  box._hits = hits;
+  box.querySelectorAll('div[data-i]').forEach(d =>
+    d.onclick = () => pick(hits[+d.dataset.i]));
+}
+
+function navSugg(e){
+  const box = $('sugg');
+  if(!box || !box.classList.contains('on')) return;
+  const ds = box.querySelectorAll('div[data-i]');
+  if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    e.preventDefault();
+    cursor += e.key === 'ArrowDown' ? 1 : -1;
+    if(cursor < 0) cursor = ds.length - 1;
+    if(cursor >= ds.length) cursor = 0;
+    ds.forEach((d, i) => d.classList.toggle('sel', i === cursor));
+    ds[cursor].scrollIntoView({block:'nearest'});
+  } else if(e.key === 'Enter'){
+    e.preventDefault();
+    pick(box._hits[cursor >= 0 ? cursor : 0]);
+  } else if(e.key === 'Escape'){
+    box.classList.remove('on');
+  }
+}
+
+function pick(f){
+  picked = f; qty = 1; meal = defaultMeal();
+  mode = 'confirm'; renderBar();
+}
+
+function save(){
+  items.push({
+    meal, name: picked.name + (qty !== 1 ? ` x${qty}` : ''),
+    g: picked.g * qty, kcal: picked.kcal * qty,
+    carb: picked.carb * qty, protein: picked.protein * qty, fat: picked.fat * qty,
+    label: picked.label, qty, photo: pendingPhoto,
+    time: new Date().toTimeString().slice(0, 5)
+  });
+  store.set(items);
+  pendingPhoto = null; picked = null; qty = 1; mode = 'idle';
+  renderAll();
+}
+
+/* ── 사진 ── */
+$('file').onchange = e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      // 썸네일로 축소해 저장 (원본은 용량 초과 위험)
+      const max = 240, s = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = img.width * s; cv.height = img.height * s;
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      pendingPhoto = cv.toDataURL('image/jpeg', 0.72);
+      meal = defaultMeal();
+      mode = 'text';
+      renderAll();
+    };
+    img.src = r.result;
+  };
+  r.readAsDataURL(f);
+  e.target.value = '';
+};
+
+/* ── 헤더 액션 ── */
+$('csv').onclick = () => {
+  const head = 'date,meal,food,portion_label,portion_g,kcal,carb_g,protein_g,fat_g,confidence,note';
+  const body = items.map(i => [
+    TODAY, i.meal, i.name, `${i.label}${i.qty !== 1 ? ` x${i.qty}` : ''}`,
+    Math.round(i.g), Math.round(i.kcal), Math.round(i.carb),
+    Math.round(i.protein), Math.round(i.fat), '중', i.photo ? '사진' : ''
+  ].join(',')).join('\n');
+  const url = URL.createObjectURL(
+    new Blob(['﻿' + head + '\n' + body], {type:'text/csv;charset=utf-8'}));
+  const a = document.createElement('a');
+  a.href = url; a.download = `log_${TODAY}.csv`; a.click();
+  URL.revokeObjectURL(url);
+};
+
+$('clr').onclick = () => {
+  if(confirm('오늘 기록을 모두 지울까요?')){
+    items = []; store.set(items); pendingPhoto = null; mode = 'idle'; renderAll();
+  }
+};
+
+function renderAll(){ renderHead(); renderChat(); renderBar(); }
+renderAll();
+</script>
+</body>
+</html>
